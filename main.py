@@ -1,6 +1,6 @@
 import numpy as np
 import scipy as sp
-from sklearn.neighbors import NearestNeighbors
+
 from scipy.spatial import distance_matrix
 from scipy.stats import norm
 
@@ -78,3 +78,12 @@ Kernel_tmp = Kernel_tmp - np.diag(np.diag(Kernel_tmp))
 print("Kernel_tmp: ")
 print(Kernel_tmp)
 print("--------")
+
+#frobenius norm
+
+# macierze podobieństwa, 
+# kernele
+# dsytanse
+# macierz ograniczenia rzędu
+
+# kenele rbf
