@@ -1,105 +1,54 @@
 import numpy as np
+import numpy.typing as npt
 import scipy as sp
 import matplotlib.pyplot as plt
-import math
-
-from scipy.spatial import distance_matrix
-from scipy.stats import norm
-
-from sklearn.metrics.pairwise import rbf_kernel
 
 
 
-def create_sum_matrix(input_list):
+def pairwise_addition(input_list: npt.NDArray) -> npt.NDArray:
+    result = np.zeros((input_size, input_size))
+    for i in range(input_size):
+        for j in range(input_size):
+            result[i][j] = input_list[i] + input_list[j]
+    return result
 
-    n = len(input_list)
-    sum_matrix = np.zeros((n, n))
 
-    for i in range(n):
-        for j in range(n):
-            sum_matrix[i, j] = input_list[i] + input_list[j]
+def create_epsilon_matrix(k: int, sigma:int) -> npt.NDArray:
+    distance_matrix = sp.spatial.distance_matrix(input_matrix, input_matrix) 
+    distance_matrix.sort(axis=1)
+    mean_distances = distance_matrix[:, 1:k+1].sum(axis=1) / k
 
-    return sum_matrix
+    epsilon_matrix = pairwise_addition(mean_distances)
+    epsilon_matrix = np.divide(epsilon_matrix, 2)
+    epsilon_matrix = np.multiply(epsilon_matrix, sigma)
+    return epsilon_matrix
 
-def get_input_size(input):
 
-    input_size = 0
-    if input.shape[0] > input.shape[1]:
-        input_size = input.shape[0]
-    else:
-        input_size = input.shape[1]
-    return input_size
+def generate_kernel(epsilon_matrix: npt.NDArray) -> npt.NDArray:
+    kernel = np.zeros((input_size, input_size))
+    kernel = np.asarray(kernel)
+    distances = sp.spatial.distance_matrix(input_matrix, input_matrix)
 
-def create_kernels(input, k_values, sig_values):
+    for i in range(input_size):
+        for j in range(input_size):
+            alpha = np.sqrt(2 * np.pi) * epsilon_matrix[i][j]
+            beta = 2 * epsilon_matrix[i][j] * epsilon_matrix[i][j]
+            kernel[i][j] = np.exp(-1 * distances[i][j] * distances[i][j] / beta) / alpha
 
-    kernels_amount = len(k_values) * len(sig_values)
+    return kernel
 
-    input_size = get_input_size(input)
-    kernels = np.zeros((kernels_amount, input_size, input_size))
 
-    z = 0
-    for i in k_values:
-        for j in sig_values:
-            #kernel = generate_kernel(input, create_sig(input, i, j), input_size)
-            kernel = generate_kernel2(input, create_sig(input, i, j), input_size)
-            #kernel = kernel[:, :, 0]
-            kernels[z] = kernel
-            z = z+1
-
+def create_kernels() -> npt.ArrayLike:
+    kernels = []
+    for k in k_values:
+        for sigma in sig_values:
+            epsilon_matrix = create_epsilon_matrix(k, sigma)
+            new_kernel = generate_kernel(epsilon_matrix)
+            kernels.append(new_kernel)
     return kernels
 
 
-def create_sig(input, k_value, sig_value):
-
-    distance = sp.spatial.distance_matrix(input, input)
-    distance_sorted = distance
-    distance_sorted.sort(axis=0)
-    distance_sorted = distance_sorted.transpose()
-    mean_distance = distance_sorted[:, 1:k_value+1].sum(axis=1) / k_value
-
-    sig = create_sum_matrix(mean_distance)
-    sig = np.divide(sig, 2)
-    sig = np.multiply(sig, sig_value)
-
-    return sig
-
-def generate_kernel(input, sig, size):
-
-    kernel = np.zeros((size, size, size))
-    kernel = np.asarray(kernel)
-    
-
-    for i in range(0, size):
-        for j in range(0, size):
-            gamma = -1 / (2 * sig[i][j] * sig[i][j])
-            gamma = sig[i][j]
-            kernel[i][j] = rbf_kernel(np.asarray(input[i]), np.asarray(input[j]), gamma=gamma )
-            kernel[i][j] = np.divide(kernel[i][j], ( np.sqrt(2 * np.pi) * sig[i][j]) )
-    return kernel 
-
-def generate_kernel2(input, sig, size):
-    kernel = np.zeros((size, size))
-    kernel = np.asarray(kernel)
-    distance = sp.spatial.distance_matrix(input, input)
-
-    for i in range(0, size):
-        for j in range(0, size):
-            gamma = 2 * sig[i][j] * sig[i][j]
-            kernel[i][j] = math.exp(-1 * distance[i][j] * distance[i][j] / gamma)
-            kernel[i][j] = kernel[i][j] / ( math.sqrt(2 * math.pi) * sig[i][j])
-    return kernel 
-
-
-#frobenius norm
-
-# macierze podobieństwa, 
-# kernele
-# dsytanse
-# macierz ograniczenia rzędu
-
-# kenele rbf
-
-input = np.matrix(
+input_matrix = np.matrix(
 [[  4.85853908,   0.29264951,  -5.64316805,   9.81972518,   7.9492724,
     1.92750418,  -1.24075805,  -6.48487387,   6.22446585,   2.07769571,
     9.51170346,   7.65247705,  -4.25322839,  -8.23537324,   9.75675858],
@@ -149,5 +98,8 @@ input = np.matrix(
 
 k_values = [3, 4]
 sig_values = [1, 2]
+kernels_amount = len(k_values) * len(sig_values)
+input_size = max(input_matrix.shape)
 
-kernels = create_kernels(input, k_values, sig_values)
+if __name__ == '__main__':
+    kernels = create_kernels()
