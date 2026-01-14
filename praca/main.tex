@@ -1,0 +1,36 @@
+\documentclass{report}
+
+\usepackage[polish]{babel}
+
+% Set page size and margins
+% Replace `letterpaper' with `a4paper' for UK/EU standard size
+\usepackage[letterpaper,top=2cm,bottom=2cm,left=3cm,right=3cm,marginparwidth=1.75cm]{geometry}
+
+% Useful packages
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+\usepackage{float}
+\usepackage[T1]{fontenc}
+
+\usepackage{titlesec}
+\titleformat{\chapter}[display]
+{\normalfont\huge\bfseries}
+{\chaptertitlename\ \thechapter}
+{10pt}
+{\Huge}    
+\titlespacing*{\chapter}
+{0pt}
+{0pt}
+{10pt}
+
+\begin{document}
+
+    \include{00_strona_glowna}
+    \tableofcontents
+    \include{01}
+    \include{02}
+    \include{03}
+    \include{10}
+
+\end{document}
