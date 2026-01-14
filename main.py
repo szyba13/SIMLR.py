@@ -27,6 +27,7 @@ k_values = [3, 4]
 sig_values = [1, 2]
 kernels_amount = len(k_values) * len(sig_values)
 input_size = max(input_matrix.shape)
+clusters_amount = 3
 
 
 def pairwise_addition(input_list: npt.NDArray) -> npt.NDArray:
@@ -79,11 +80,19 @@ def plot_kernels(kernels):
         plt.title(f'Kernel no. {i}')
     plt.show()
 
-def optimize_similarity_matrix(kernels, weights):
+
+def optimalization_process(kernels, weights, similarity_matrix):
+    L = np.ones((input_size, clusters_amount))
+    S = optimize_similarity_matrix(kernels, weights, L, similarity_matrix)
+    L = optimize_L_matrix(kernels, weights, L, S)
+    w = optimize_w_matrix(kernels, weights, L, S)
+    return S
+
+
+def optimize_similarity_matrix(kernels, weights, L, S):
     gamma = 0.1
     beta = 0.1
     n = input_size
-    L = np.random.randn(input_size, 2)
     S = cvxpy.Variable((n, n))
     label_term = gamma * (L @ L.T)
     weighted_kernels = np.zeros((n, n))
@@ -102,11 +111,37 @@ def optimize_similarity_matrix(kernels, weights):
     return S.value
 
 
+def optimize_L_matrix(kernels, weights, L, S):
+    #Ic = np.identity(clusters_amount)
+    In = np.identity(input_size)
+
+    eigenvalues, eigenvectors = np.linalg.eig((S-In))
+    index_order = np.argsort(eigenvalues)
+    L = eigenvectors[index_order[:clusters_amount:-1]]
+    return L
+
+
+def optimize_w_matrix(kernels, weights, L, S):
+    po = 0.1
+    w = cvxpy.Variable(kernels_amount, value=weights)
+
+    objective_func = cvxpy.sum(w * cvxpy.sum(kernels * S)) - po * cvxpy.sum(w * cvxpy.log(w))
+    objective = cvxpy.Maximize(objective_func)
+    constraints = [
+        cvxpy.sum(w) == 1,
+        w >= 0
+    ]
+    prob = cvxpy.Problem(objective, constraints)
+    prob.solve()
+    return w
+
+
+
 
 
 if (__name__ == '__main__'):
     kernels = create_kernels()
-    plot_kernels(kernels)
+    #plot_kernels(kernels)
 
     weights = np.full((kernels_amount), 1/kernels_amount)
 
@@ -116,5 +151,5 @@ if (__name__ == '__main__'):
 
     print(similarity_matrix.sum(axis=0))
 
-    similarity_matrix = optimize_similarity_matrix(kernels, weights)
+    similarity_matrix = optimalization_process(kernels, weights, similarity_matrix)
     print(similarity_matrix)
