@@ -86,7 +86,7 @@ def optimalization_process(kernels, weights, similarity_matrix):
     S = optimize_similarity_matrix(kernels, weights, L, similarity_matrix)
     L = optimize_L_matrix(kernels, weights, L, S)
     w = optimize_w_matrix(kernels, weights, L, S)
-    return S
+    return S, w
 
 
 def optimize_similarity_matrix(kernels, weights, L, S):
@@ -123,16 +123,16 @@ def optimize_L_matrix(kernels, weights, L, S):
 
 def optimize_w_matrix(kernels, weights, L, S):
     po = 0.1
-    w = cvxpy.Variable(kernels_amount, value=weights)
+    exponents = []
+    for i in range(kernels_amount):
+        a = np.sum(kernels[i] * S) / po
+        exponents.append(np.exp(a))
 
-    objective_func = cvxpy.sum(w * cvxpy.sum(kernels * S)) - po * cvxpy.sum(w * cvxpy.log(w))
-    objective = cvxpy.Maximize(objective_func)
-    constraints = [
-        cvxpy.sum(w) == 1,
-        w >= 0
-    ]
-    prob = cvxpy.Problem(objective, constraints)
-    prob.solve()
+    exponents_sum = np.sum(exponents)
+    w = []
+    for i in range(kernels_amount):
+        w.append(exponents[i] / exponents_sum)
+
     return w
 
 
