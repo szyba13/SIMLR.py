@@ -1,0 +1,51 @@
+problemy:
+1 dyfuzja
+2 pętla
+3 kolumny nie wiersze w L
+
+datasety:
+mnist/digits:
+-load_digits()
+-mnist 70000
+
+1.Wstęp
+-wprowadzenie do tematu
+-jaki mamy problem badawczy
+-jaki jest cel pracy
+
+2. Background
+-wybrane metody klastrowania - Kmeans, DBSCAN, Spectral
+-metody jądrowe - co to kernel, jądro gaussa
+
+3. Oryginalny SIMLR
+-opis metody
+-jaki jest problem optymalizacyjny
+-pseudokod algorytmu
+
+4. własna implementacja
+-opis algorytmu
+-jakie były problemy
+-listingi kodu
+
+5. Dane techniczne
+-setup technologiczny (komputer jaki, procesor ile ramu)
+-środowisko
+-technologie
+-biblioteki
+
+6. Zbiory danych
+mnist/digits()
+
+6. Metryki oceny
+ARI, NMI, liczba punktów noise oryginalnie (jeśli były w datasecie) i liczba punktów noise wykrytych, liczba klastrów oryginalnie i liczba klastrów wykrytych
+completness, homogenity, vmeasure (?)
+czas działania, zużycie zasobów
+
+6. Eksperymenty i wyniki
+-tabelki z wynikami
+
+7. Analiza wyników 
+
+8. Podsumowanie
+
+9. Przyszłe kierunki 
