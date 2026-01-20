@@ -105,7 +105,7 @@ def calculate_gamma():
     return suma / (2*input_size)
 
 
-def update_gamma(old_gamma, t, S):
+def update_gamma(old_gamma, S):
     eigenvalue = calculate_eigengap(clusters_amount, S)
     if eigenvalue > 1e-6:
         return old_gamma * ( 1 + (0.5 * eigenvalue))
@@ -113,14 +113,14 @@ def update_gamma(old_gamma, t, S):
         return old_gamma
 
 
-def optimize_similarity_matrix(kernels, weights, L, gamma):
+def optimize_similarity_matrix(kernels, weights, L, gamma, S):
     beta = gamma
 
-    S = np.zeros((input_size, input_size))
-    for i in range(0, kernels_amount):
-        S += np.multiply(kernels[i], weights[i])
+    #S = np.zeros((input_size, input_size))
+    # for i in range(0, kernels_amount):
+    #     S += np.multiply(kernels[i], weights[i])
 
-    ones = np.ones((1,input_size))
+    ones = np.ones(input_size)
     In = np.identity(input_size)
     v = ( -1 / (2 * beta) ) * ( gamma * (L @ L.T) - S )
     u = (In - (ones@ones.T/input_size)) * v + (ones / input_size)
@@ -151,7 +151,7 @@ def optimize_L_matrix(kernels, weights, S):
     return np.array(L).T
 
 
-def optimize_w_matrix(kernels, L, S):
+def optimize_w_matrix(kernels, S):
     po = 0.1
     exponents = []
     for i in range(kernels_amount):
@@ -176,9 +176,9 @@ def diffusion(S, t):
         for j in line:
             mask[i][j] = 1
 
-    suma = np.sum(S*mask, axis=0)
+    suma = np.sum(np.multiply(S, mask), axis=0)
     P = np.zeros((input_size, input_size))
-    P = np.divide(S.T, suma).T * mask
+    P = np.multiply(np.divide(S.T, suma).T, mask)
     
     H = S
     tau = 0.8
@@ -197,12 +197,12 @@ def optimalization_process(kernels, weights, similarity_matrix):
     S = similarity_matrix
 
     t = 0
-    old_eigengap = 1
+    old_eigengap = 10
     for i in range(100):
-        S = optimize_similarity_matrix(kernels, w, L, gamma)
+        S = optimize_similarity_matrix(kernels, w, L, gamma, S)
         L = optimize_L_matrix(kernels, w, S)
-        w = optimize_w_matrix(kernels, L, S)
-        gamma = update_gamma(gamma, i, S)
+        w = optimize_w_matrix(kernels, S)
+        gamma = update_gamma(gamma, S)
         S = diffusion(S, t)
         eigengap = calculate_eigengap(t, S)
         if old_eigengap > eigengap:
