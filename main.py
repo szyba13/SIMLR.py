@@ -31,7 +31,7 @@ k_values = [5,6,7]
 sig_values = [1, 1.25, 1.5, 2]
 kernels_amount = len(k_values) * len(sig_values)
 input_size = max(input_matrix.shape)
-clusters_amount = 3
+clusters_amount = 10
 
 
 def pairwise_addition(input_list: npt.NDArray) -> npt.NDArray:
@@ -87,7 +87,7 @@ def plot_kernels(kernels):
 
 def calculate_eigengap(n, S):
     In = np.identity(input_size)
-    eigenvalues, eigenvectors = np.linalg.eig((S-In))
+    eigenvalues, eigenvectors = np.linalg.eig(S)
     return eigenvalues[n] - eigenvalues[n-1]
 
 
@@ -229,4 +229,8 @@ if (__name__ == '__main__'):
     weights = optimalization_process(kernels, weights, similarity_matrix)
     for i in range(0, kernels_amount):
         similarity_matrix = similarity_matrix + np.multiply(kernels[i], weights[i])
+    plt.imshow(similarity_matrix, interpolation="nearest", origin="upper")
+    plt.colorbar()
+    plt.show()
     print(similarity_matrix)
+
