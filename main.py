@@ -1,4 +1,3 @@
-from math import dist
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -52,13 +51,13 @@ def calculate_similarity(
 
 
 def calculate_first_gamma(distance_matrix: npt.NDArray, k_values: list[int]):
-    distance_matrix = np.sort(distance_matrix, axis=1)
+    sorted_distance_matrix = np.sort(distance_matrix, axis=1)
     N = distance_matrix.shape[0]
     suma = 0.0
     for i in range(1, N):
         for j in range(k_values[-1]):
-            a = distance_matrix[i, k_values[-1] + 1]
-            b = distance_matrix[i, j]
+            a = sorted_distance_matrix[i, k_values[-1] + 1]
+            b = sorted_distance_matrix[i, j]
             suma += (a**2) - (b**2)
     return suma / (2 * N)
 
@@ -134,8 +133,8 @@ def optimize_L_matrix(S: npt.NDArray) -> npt.NDArray:
 
 
 def diffusion(S: npt.NDArray, t: int, distance_matrix: npt.NDArray) -> npt.NDArray:
-    distance_matrix = np.argsort(distance_matrix, axis=1)
-    top_indices = distance_matrix[:, 1 : k_values[-1]]
+    sorted_distance_matrix = np.argsort(distance_matrix, axis=1)
+    top_indices = sorted_distance_matrix[:, 1 : k_values[-1]]
     N = S.shape[0]
     mask = np.zeros((N, N))
     for i, line in enumerate(top_indices):
