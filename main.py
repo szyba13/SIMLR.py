@@ -30,6 +30,7 @@ def create_kernels(
     sig_values: list[float],
     distance_matrix: npt.NDArray,
 ) -> list[npt.NDArray]:
+    print("Generating kernels...")
     sorted_distances = np.sort(distance_matrix, axis=1)
     kernels = []
     for k in k_values:
@@ -59,7 +60,9 @@ def calculate_first_gamma(distance_matrix: npt.NDArray, k_values: list[int]):
             a = sorted_distance_matrix[i, k_values[-1] + 1]
             b = sorted_distance_matrix[i, j]
             suma += (a**2) - (b**2)
-    return suma / (2 * N)
+    result = suma / (2 * N)
+    print(f"Starting gamma value: {result}.")
+    return result
 
 
 def calculate_eigengap(n: int, S: npt.NDArray) -> float:
@@ -100,7 +103,7 @@ def optimize_S_matrix(
             sp.optimize.newton(
                 S_func,
                 np.mean(u[i]),
-                args=(u[i],),
+                args=(u[i][1:-2],),
             )
             # sp.optimize.root(S_func, np.mean(u[i]), args=(u[i],))
         )
@@ -123,13 +126,14 @@ def optimize_w_matrix(kernels: list[npt.NDArray], S: npt.NDArray) -> list[float]
     return w
 
 
-def optimize_L_matrix(S: npt.NDArray) -> npt.NDArray:
+def optimize_L_matrix(S: npt.NDArray, desired_cluster_amount: int) -> npt.NDArray:
     In = np.identity(S.shape[0])
     eigenvalues, eigenvectors = np.linalg.eigh((In - S))
-    index_order = np.argsort(eigenvalues)
-    top_indices = index_order[:clusters_amount]
-    L = [eigenvectors[:, i] for i in top_indices]
-    return np.array(L).T
+    # index_order = np.argsort(eigenvalues)
+    # top_indices = index_order[:clusters_amount]
+    # L = [eigenvectors[:, i] for i in top_indices]
+    L = eigenvectors[:, :desired_cluster_amount]
+    return np.array(L)
 
 
 def diffusion(S: npt.NDArray, t: int, distance_matrix: npt.NDArray) -> npt.NDArray:
@@ -161,24 +165,28 @@ def optimalization_process(
     desired_cluster_amount: int,
     distance_matrix: npt.NDArray,
 ):
+    print("Starting optimalization process...")
     w = [1 / len(kernels)] * len(kernels)
     S = calculate_similarity(kernels, w)
-    L = optimize_L_matrix(S)
+    L = optimize_L_matrix(S, desired_cluster_amount)
     gamma = calculate_first_gamma(distance_matrix, k_values)
 
     old_eigengap = np.inf
     for t in range(20):
         S = optimize_S_matrix(kernels, w, L, gamma, S)
-        L = optimize_L_matrix(S)
+        L = optimize_L_matrix(S, desired_cluster_amount)
         w = optimize_w_matrix(kernels, S)
-        gamma = update_gamma(gamma, S)
         S = diffusion(S, t, distance_matrix)
+        gamma = update_gamma(gamma, S)
         eigengap = calculate_eigengap(desired_cluster_amount, S)
+        print(f"{t}. Gamma = {gamma}, eigengap = {eigengap}")
         if old_eigengap > eigengap:
             old_eigengap = eigengap
         else:
+            print("Smallest Eigengap reached.")
             break
 
+    print(f"Final weights: {w}.")
     return w
 
 
