@@ -65,7 +65,7 @@ def calculate_first_gamma(distance_matrix: npt.NDArray, k_values: list[int]):
 
 def calculate_eigengap(n: int, S: npt.NDArray) -> float:
     eigenvalues, eigenvectors = np.linalg.eigh(S)
-    return eigenvalues[n] - eigenvalues[n - 1]
+    return eigenvalues[n + 1] - eigenvalues[n]
 
 
 def update_gamma(old_gamma: float, S: npt.NDArray) -> float:
@@ -76,7 +76,7 @@ def update_gamma(old_gamma: float, S: npt.NDArray) -> float:
         return old_gamma
 
 
-def S_func(sigma, u_i):
+def S_func(sigma: float, u_i: npt.NDArray) -> np.floating:
     return np.mean(np.maximum(sigma - u_i, 0)) - sigma
 
 
@@ -88,11 +88,12 @@ def optimize_S_matrix(
     S: npt.NDArray,
 ) -> npt.NDArray:
     beta = gamma
+    # S = calculate_similarity(kernels, weights)
     N = S.shape[0]
     ones = np.ones(N)
     In = np.identity(N)
     v = (-1 / (2 * beta)) * (gamma * (L @ L.T) - S)
-    u = (In - (ones @ ones.T / N)) @ v + (ones / N)
+    u = (In - (ones * ones.T / N)) @ v + (ones / N)
 
     sigmas = []
     for i in range(N):
@@ -102,17 +103,18 @@ def optimize_S_matrix(
                 np.mean(u[i]),
                 args=(u[i],),
             )
+            # sp.optimize.root(S_func, np.mean(u[i]), args=(u[i],))
         )
 
-    S = np.maximum(np.subtract(u.T, sigmas).T, 0)
+    S = np.maximum(u - sigmas, 0)
     return S
 
 
 def optimize_w_matrix(kernels: list[npt.NDArray], S: npt.NDArray) -> list[float]:
-    po = 0.1
+    po = kernels[0].shape[0]
     exponents = []
     for k in kernels:
-        a = np.sum(k * S) / po
+        a = np.sum(k @ S) / po
         exponents.append(np.exp(a))
 
     exponents_sum = np.sum(exponents)
@@ -131,25 +133,26 @@ def optimize_L_matrix(S: npt.NDArray) -> npt.NDArray:
     return np.array(L).T
 
 
-def diffusion(S: npt.NDArray, t: int) -> npt.NDArray:
-    distance_matrix = sp.spatial.distance_matrix(input_matrix, input_matrix)
+def diffusion(S: npt.NDArray, t: int, distance_matrix: npt.NDArray) -> npt.NDArray:
     distance_matrix = np.argsort(distance_matrix, axis=1)
-    top_indices = distance_matrix[:, 1 : k_values[0]]
+    top_indices = distance_matrix[:, 1 : k_values[-1]]
     N = S.shape[0]
     mask = np.zeros((N, N))
     for i, line in enumerate(top_indices):
         for j in line:
             mask[i][j] = 1
 
-    suma = np.sum(np.multiply(S, mask), axis=0)
-    P = np.zeros((N, N))
-    P = np.multiply(np.divide(S.T, suma).T, mask)
+    # suma = np.sum(np.multiply(S, mask), axis=0)
+    # P = np.zeros((N, N))
+    # P = np.multiply(np.divide(S.T, suma).T, mask)
+
+    P = (S / np.sum(S, axis=0)) * mask
 
     H = S
     tau = 0.8
     In = np.identity(N)
     for i in range(t):
-        H = tau * H * P + (1 - tau) * In
+        H = tau * (H @ P) + (1 - tau) * In
 
     return H
 
@@ -165,12 +168,12 @@ def optimalization_process(
     gamma = calculate_first_gamma(distance_matrix, k_values)
 
     old_eigengap = np.inf
-    for t in range(100):
+    for t in range(20):
         S = optimize_S_matrix(kernels, w, L, gamma, S)
         L = optimize_L_matrix(S)
         w = optimize_w_matrix(kernels, S)
         gamma = update_gamma(gamma, S)
-        S = diffusion(S, t)
+        S = diffusion(S, t, distance_matrix)
         eigengap = calculate_eigengap(desired_cluster_amount, S)
         if old_eigengap > eigengap:
             old_eigengap = eigengap
@@ -182,7 +185,7 @@ def optimalization_process(
 
 if __name__ == "__main__":
     digits, labels = load_digits(return_X_y=True)
-    input_matrix = digits[:100]
+    input_matrix = digits[:200]
     distance_matrix = sp.spatial.distance_matrix(input_matrix, input_matrix)
 
     k_values = [5, 6, 7]
