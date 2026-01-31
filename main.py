@@ -3,6 +3,7 @@ import numpy as np
 import numpy.typing as npt
 import scipy as sp
 from sklearn.datasets import load_digits
+from sklearn import preprocessing
 
 
 def create_epsilon_matrix(
@@ -21,6 +22,11 @@ def generate_kernel(
     kernel = np.power(distance_matrix, 2) / (-2 * np.power(epsilon_matrix, 2))
     kernel = np.exp(kernel)
     kernel = kernel / (epsilon_matrix * np.sqrt(2 * np.pi))
+
+    kernel = (kernel + kernel.T) / 2
+    kernel = np.maximum(kernel, 0)
+    kernel /= kernel.sum(axis=1, keepdims=True)
+
     return kernel
 
 
@@ -51,26 +57,28 @@ def calculate_similarity(
     return similarity_matrix
 
 
-def calculate_first_gamma(distance_matrix: npt.NDArray, k_values: list[int]):
+def calculate_first_gamma(distance_matrix: npt.NDArray, k: int):
     sorted_distance_matrix = np.sort(distance_matrix, axis=1)
     N = distance_matrix.shape[0]
     suma = 0.0
     for i in range(1, N):
-        for j in range(k_values[-1]):
-            a = sorted_distance_matrix[i, k_values[-1] + 1]
+        for j in range(k + 1):
+            a = sorted_distance_matrix[i, k + 1]
             b = sorted_distance_matrix[i, j]
             suma += (a**2) - (b**2)
-    result = suma / (2 * N)
+    result = suma / (N * N)  # N^2 zamiast 2N
     print(f"Starting gamma value: {result}.")
     return result
 
 
 def calculate_eigengap(n: int, S: npt.NDArray) -> float:
-    eigenvalues, eigenvectors = np.linalg.eigh(S)
+    In = np.identity(S.shape[0])
+    L = preprocessing.MinMaxScaler().fit_transform(S)
+    eigenvalues, eigenvectors = np.linalg.eigh(L)
     return eigenvalues[n + 1] - eigenvalues[n]
 
 
-def update_gamma(old_gamma: float, S: npt.NDArray) -> float:
+def update_gamma(old_gamma: float, S: npt.NDArray, clusters_amount: int) -> float:
     eigenvalue = calculate_eigengap(clusters_amount, S)
     if eigenvalue > 1e-6:
         return old_gamma * (1 + (0.5 * eigenvalue))
@@ -87,36 +95,47 @@ def optimize_S_matrix(
     weights: list[float],
     L: npt.NDArray,
     gamma: float,
-    S: npt.NDArray,
+    old_S: npt.NDArray,
 ) -> npt.NDArray:
     beta = gamma
-    # S = calculate_similarity(kernels, weights)
+    S = calculate_similarity(kernels, weights)
     N = S.shape[0]
     ones = np.ones(N)
     In = np.identity(N)
-    v = (-1 / (2 * beta)) * (gamma * (L @ L.T) - S)
-    u = (In - (ones * ones.T / N)) @ v + (ones / N)
+
+    v = (-1 / (2 * beta)) * ((gamma * (L @ L.T)) - S)
+    u = np.zeros((N, N))
+
+    for i in range(N):
+        u[i] = np.dot((In - (ones * ones.T / N)), v[i]) + (ones / N)
 
     sigmas = []
     for i in range(N):
         sigmas.append(
-            sp.optimize.newton(
-                S_func,
-                np.mean(u[i]),
-                args=(u[i][1:-2],),
-            )
-            # sp.optimize.root(S_func, np.mean(u[i]), args=(u[i],))
+            # sp.optimize.newton(
+            #     S_func,
+            #     np.mean(u[i]),
+            #     args=(u[i],),
+            # )
+            sp.optimize.root(S_func, np.mean(u[i]), args=(u[i][:-1],)).x[0]
         )
 
     S = np.maximum(u - sigmas, 0)
-    return S
+    alpha = 0.8
+    result = ((1 - alpha) * S) + (alpha * old_S)
+
+    result = (result + result.T) / 2
+    result = np.maximum(result, 0)
+    result /= result.sum(axis=1, keepdims=True)
+
+    return result
 
 
 def optimize_w_matrix(kernels: list[npt.NDArray], S: npt.NDArray) -> list[float]:
     po = kernels[0].shape[0]
     exponents = []
     for k in kernels:
-        a = np.sum(k @ S) / po
+        a = np.sum(k * S) / po
         exponents.append(np.exp(a))
 
     exponents_sum = np.sum(exponents)
@@ -128,34 +147,42 @@ def optimize_w_matrix(kernels: list[npt.NDArray], S: npt.NDArray) -> list[float]
 
 def optimize_L_matrix(S: npt.NDArray, desired_cluster_amount: int) -> npt.NDArray:
     In = np.identity(S.shape[0])
-    eigenvalues, eigenvectors = np.linalg.eigh((In - S))
-    # index_order = np.argsort(eigenvalues)
-    # top_indices = index_order[:clusters_amount]
-    # L = [eigenvectors[:, i] for i in top_indices]
+    L = preprocessing.MinMaxScaler().fit_transform(In - S)
+    L = (L + L.T) / 2
+    eigenvalues, eigenvectors = np.linalg.eigh(L)
     L = eigenvectors[:, :desired_cluster_amount]
     return np.array(L)
 
 
-def diffusion(S: npt.NDArray, t: int, distance_matrix: npt.NDArray) -> npt.NDArray:
-    sorted_distance_matrix = np.argsort(distance_matrix, axis=1)
-    top_indices = sorted_distance_matrix[:, 1 : k_values[-1]]
+def calculate_P_matrix(
+    S: npt.NDArray, distance_matrix: npt.NDArray, k: int
+) -> npt.NDArray:
+    top_indices = np.argsort(distance_matrix, axis=1)[:, 1 : k + 1]
     N = S.shape[0]
-    mask = np.zeros((N, N))
-    for i, line in enumerate(top_indices):
-        for j in line:
-            mask[i][j] = 1
+    P = np.zeros((N, N))
+    for i in range(N):
+        suma = np.sum(S[i][top_indices[i]], axis=0)
+        if suma > 0:
+            for index in top_indices[i]:
+                P[i][index] = S[i][index] / suma
 
-    # suma = np.sum(np.multiply(S, mask), axis=0)
-    # P = np.zeros((N, N))
-    # P = np.multiply(np.divide(S.T, suma).T, mask)
+    P = (P + P.T) / 2
+    P = np.maximum(P, 0)
+    P /= P.sum(axis=1, keepdims=True)
 
-    P = (S / np.sum(S, axis=0)) * mask
+    return P
 
+
+def apply_diffusion(S: npt.NDArray, P: npt.NDArray) -> npt.NDArray:
+    N = S.shape[0]
     H = S
-    tau = 0.8
+    tau = 1 - (1 / N)  # tau = 0.8
     In = np.identity(N)
-    for i in range(t):
-        H = tau * (H @ P) + (1 - tau) * In
+    H = tau * (H @ P) + (1 - tau) * In
+
+    H = (H + H.T) / 2
+    H = np.maximum(H, 0)
+    H /= H.sum(axis=1, keepdims=True)
 
     return H
 
@@ -164,46 +191,74 @@ def optimalization_process(
     kernels: list[npt.NDArray],
     desired_cluster_amount: int,
     distance_matrix: npt.NDArray,
+    k: int,
 ):
     print("Starting optimalization process...")
     w = [1 / len(kernels)] * len(kernels)
     S = calculate_similarity(kernels, w)
     L = optimize_L_matrix(S, desired_cluster_amount)
-    gamma = calculate_first_gamma(distance_matrix, k_values)
+    gamma = calculate_first_gamma(distance_matrix, k)
+
+    old_w = w
+    old_S = S
 
     old_eigengap = np.inf
     for t in range(20):
         S = optimize_S_matrix(kernels, w, L, gamma, S)
         L = optimize_L_matrix(S, desired_cluster_amount)
         w = optimize_w_matrix(kernels, S)
-        S = diffusion(S, t, distance_matrix)
-        gamma = update_gamma(gamma, S)
+        P = calculate_P_matrix(S, distance_matrix, k)
+        S = apply_diffusion(S, P)
+
+        gamma = update_gamma(gamma, S, desired_cluster_amount)
         eigengap = calculate_eigengap(desired_cluster_amount, S)
         print(f"{t}. Gamma = {gamma}, eigengap = {eigengap}")
-        if old_eigengap > eigengap:
+
+        if old_eigengap > eigengap or eigengap > 0.1:
             old_eigengap = eigengap
+            old_w = w
+            old_S = S
         else:
             print("Smallest Eigengap reached.")
             break
 
     print(f"Final weights: {w}.")
-    return w
+    return old_S, old_w
 
 
-if __name__ == "__main__":
+def main():
     digits, labels = load_digits(return_X_y=True)
-    input_matrix = digits[:200]
+    input_amount = 500
+    input_matrix = digits[:input_amount]
+    input_matrix = preprocessing.MinMaxScaler().fit_transform(input_matrix)
     distance_matrix = sp.spatial.distance_matrix(input_matrix, input_matrix)
 
-    k_values = [5, 6, 7]
+    k_values = np.arange(10, 31, 2).tolist()
     sig_values = [1, 1.25, 1.5, 2]
     clusters_amount = 10
 
     kernels = create_kernels(input_matrix, k_values, sig_values, distance_matrix)
-    weights = optimalization_process(kernels, clusters_amount, distance_matrix)
-    print()
+    similarity, weights = optimalization_process(
+        kernels, clusters_amount, distance_matrix, k_values[-1]
+    )
 
-    similarity = calculate_similarity(kernels, weights)
+    # Visualization
+    plt.figure(figsize=(10, 8))
+    plt.title("Optimized Similarity Matrix")
     plt.imshow(similarity, interpolation="nearest", origin="upper")
     plt.colorbar()
     plt.show()
+
+    # Sort S_final by ground truth labels to see block diagonal structure
+    sort_inds = np.argsort(labels[:input_amount])
+    S_sorted = similarity[sort_inds][:, sort_inds]
+
+    plt.figure(figsize=(10, 8))
+    plt.imshow(S_sorted, interpolation="nearest", origin="upper", cmap="viridis")
+    plt.colorbar(label="Similarity Probability")
+    plt.title("Optimized Similarity Matrix (Sorted by Label)")
+    plt.show()
+
+
+if __name__ == "__main__":
+    main()
