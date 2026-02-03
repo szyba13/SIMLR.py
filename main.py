@@ -2,8 +2,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import scipy as sp
-from sklearn.datasets import load_digits
+import pandas as pd
+import seaborn as sn
+from sklearn import datasets
 from sklearn import preprocessing
+from sklearn.manifold import TSNE
+from sklearn.cluster import KMeans
+from sklearn.metrics import normalized_mutual_info_score as NMI
+from sklearn.metrics import adjusted_rand_score as ARI
 
 
 def create_epsilon_matrix(
@@ -227,13 +233,14 @@ def optimalization_process(
 
 
 def main():
-    digits, labels = load_digits(return_X_y=True)
+    digits, labels = datasets.load_digits(return_X_y=True)
     input_amount = 500
+    labels = labels[:input_amount]
     input_matrix = digits[:input_amount]
     input_matrix = preprocessing.MinMaxScaler().fit_transform(input_matrix)
     distance_matrix = sp.spatial.distance_matrix(input_matrix, input_matrix)
 
-    k_values = np.arange(10, 31, 2).tolist()
+    k_values = np.arange(10, 31, 5).tolist()
     sig_values = [1, 1.25, 1.5, 2]
     clusters_amount = 10
 
@@ -242,22 +249,62 @@ def main():
         kernels, clusters_amount, distance_matrix, k_values[-1]
     )
 
-    # Visualization
-    plt.figure(figsize=(10, 8))
-    plt.title("Optimized Similarity Matrix")
-    plt.imshow(similarity, interpolation="nearest", origin="upper")
-    plt.colorbar()
-    plt.show()
+    fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(16, 8))
+    axs[0].imshow(similarity)
+    axs[0].set_title("Similarity matrix")
 
-    # Sort S_final by ground truth labels to see block diagonal structure
     sort_inds = np.argsort(labels[:input_amount])
     S_sorted = similarity[sort_inds][:, sort_inds]
+    axs[1].imshow(S_sorted)
+    axs[1].set_title("Similarity matrix sorted by labels")
 
-    plt.figure(figsize=(10, 8))
-    plt.imshow(S_sorted, interpolation="nearest", origin="upper", cmap="viridis")
-    plt.colorbar(label="Similarity Probability")
-    plt.title("Optimized Similarity Matrix (Sorted by Label)")
     plt.show()
+
+    # # Visualization
+    # plt.figure(figsize=(10, 8))
+    # plt.title("Optimized Similarity Matrix")
+    # plt.imshow(similarity, interpolation="nearest", origin="upper")
+    # plt.colorbar()
+    # plt.show()
+
+    # # Sort S_final by ground truth labels to see block diagonal structure
+    # sort_inds = np.argsort(labels[:input_amount])
+    # S_sorted = similarity[sort_inds][:, sort_inds]
+
+    # plt.figure(figsize=(10, 8))
+    # plt.imshow(S_sorted, interpolation="nearest", origin="upper", cmap="viridis")
+    # plt.colorbar(label="Similarity Probability")
+    # plt.title("Optimized Similarity Matrix (Sorted by Label)")
+    # plt.show()
+
+    visualization_model = TSNE(n_components=2, random_state=0)
+    visualization_tsne_data = visualization_model.fit_transform(similarity)
+
+    tsne_data = np.vstack((visualization_tsne_data.T, labels)).T
+    tsne_df = pd.DataFrame(data=tsne_data, columns=("Dim_1", "Dim_2", "label"))
+
+    raw_tsne_data = visualization_model.fit_transform(input_matrix)
+
+    raw_tsne_data = np.vstack((raw_tsne_data.T, labels)).T
+    raw_tsne_df = pd.DataFrame(data=raw_tsne_data, columns=("Dim_1", "Dim_2", "label"))
+
+    fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(16, 8))
+    axs[0].scatter(data=tsne_df, x="Dim_1", y="Dim_2", c="label")
+    axs[0].set_title("t-SNE with SIMLR")
+    axs[1].scatter(data=raw_tsne_df, x="Dim_1", y="Dim_2", c="label")
+    axs[1].set_title("t-SNE without SIMLR")
+    plt.show()
+
+    tsne_model = TSNE(n_components=clusters_amount, random_state=0, method="exact")
+    tsne_data = tsne_model.fit_transform(similarity)
+    model = KMeans(clusters_amount, random_state=0)
+    cluster_labels = model.fit_predict(similarity)
+
+    NMI_score = NMI(labels, cluster_labels)
+    print(f"NMI score: {NMI_score}.")
+
+    ARI_score = ARI(labels, cluster_labels)
+    print(f"ARI score: {ARI_score}.")
 
 
 if __name__ == "__main__":
