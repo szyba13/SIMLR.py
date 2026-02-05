@@ -75,7 +75,7 @@ def calculate_first_gamma(distance_matrix: npt.NDArray, k: int):
             a = sorted_distance_matrix[i, k]
             b = sorted_distance_matrix[i, j]
             suma += (a**2) - (b**2)
-    result = suma / (2 * N)  # N^2 zamiast 2N
+    result = suma / (2 * N)
     print(f"Starting gamma value: {result}.")
     return result
 
@@ -83,13 +83,13 @@ def calculate_first_gamma(distance_matrix: npt.NDArray, k: int):
 def calculate_eigengap(n: int, S: npt.NDArray) -> float:
     In = np.identity(S.shape[0])
     eigenvalues, eigenvectors = np.linalg.eigh(In - S)
-    return eigenvalues[n + 1] - eigenvalues[n]
+    return eigenvalues[n] - eigenvalues[n - 1]
 
 
 def update_gamma(old_gamma: float, S: npt.NDArray, clusters_amount: int) -> float:
     eigenvalue = calculate_eigengap(clusters_amount, S)
     if eigenvalue > 1e-6:
-        return old_gamma * 1.5
+        return old_gamma * (1 + (0.5 * eigenvalue))  # w oryginale używają *1.5
     else:
         return old_gamma
 
@@ -111,12 +111,14 @@ def optimize_S_matrix(
     ones = np.ones(N)
     In = np.identity(N)
 
-    v = (-1 / (2 * beta)) * ((gamma * (L @ L.T)) - wK)
+    v = (1 / (2 * beta)) * ((gamma * (L @ L.T)) - wK)  # Znak jest odwrócony
     # u = (In - (ones * ones.T / N)) * v + (ones / N)
 
-    u = np.zeros((N, N))
+    u = [[0] * N] * N
+    a = In - ((ones * ones.T) / N)
+    b = (1 / N) * ones
     for i in range(N):
-        u[i] = np.dot((In - (ones * ones.T / N)), v[i]) + (ones / N)
+        u[i] = np.dot(a, v[i]) + b
 
     sigmas = []
     for i in range(N):
@@ -130,8 +132,8 @@ def optimize_S_matrix(
         )
     S = np.zeros((N, N))
     for i in range(N):
-        S[i] = np.maximum(u[i] - sigmas, 0)
-    alpha = 1
+        S[i] = np.maximum(u[i] - sigmas[i], 0)
+    alpha = 0.8
     result = (alpha * S) + ((1 - alpha) * old_S)
 
     # result = (result + result.T) / 2
@@ -186,10 +188,10 @@ def calculate_P_matrix(
 def apply_diffusion(S: npt.NDArray, P: npt.NDArray, t: int) -> npt.NDArray:
     N = S.shape[0]
     H = S
-    tau = 0.8  #  1 - (1 / N)  # tau = 0.8
+    tau = 0.95
     In = np.identity(N)
 
-    H = tau * H @ P + (1 - tau) * In
+    H = tau * (H @ P) + (1 - tau) * In
     # for i in range(t):
     #     H_prev = H
     #     if np.linalg.norm(H - H_prev) < 1e-6:
@@ -211,23 +213,21 @@ def optimalization_process(
 ):
     print("Starting optimalization process...")
     w = [1 / len(kernels)] * len(kernels)
-    S = calculate_weighted_kernels(kernels, w)
-    S = (S + S.T) / 2
-    S /= S.sum(axis=1, keepdims=True)
-    L = optimize_L_matrix(S, desired_cluster_amount)
+    Kw = calculate_weighted_kernels(kernels, w)
+    L = optimize_L_matrix(Kw, desired_cluster_amount)
     gamma = calculate_first_gamma(distance_matrix, k)
 
     old_w = w
-    old_S = S
+    old_S = Kw
     old_L = L
 
     old_eigengap = np.inf
-    for t in range(20):
-        S = optimize_S_matrix(kernels, w, L, gamma, S)
+    for t in range(5):
+        S = optimize_S_matrix(kernels, w, L, gamma, old_S)
         L = optimize_L_matrix(S, desired_cluster_amount)
         w = optimize_w_matrix(kernels, S)
         P = calculate_P_matrix(S, distance_matrix, k)
-        # S = apply_diffusion(S, P, t)
+        S = apply_diffusion(S, P, t)
 
         gamma = update_gamma(gamma, S, desired_cluster_amount)
         eigengap = calculate_eigengap(desired_cluster_amount, S)
@@ -251,21 +251,24 @@ def main():
     input_amount = 500
     labels = labels[:input_amount]
     input_matrix = digits[:input_amount]
-    input_matrix = preprocessing.MinMaxScaler().fit_transform(input_matrix)
-    # input_matrix = np.log10(input_matrix + 1)
+    # input_matrix = preprocessing.MinMaxScaler().fit_transform(input_matrix)
+
+    # według tekstu, wszystkie komórki były przeskalowane przez f(x) = log10(x+1)
+    input_matrix = np.log10(input_matrix + 1)
     distance_matrix = sp.spatial.distance_matrix(input_matrix, input_matrix)
     # distance_matrix = preprocessing.MinMaxScaler().fit_transform(distance_matrix)
+    # distance_matrix = np.log10(distance_matrix + 1)
 
     k_values = np.arange(10, 32, 2).tolist()
     sig_values = [1, 1.25, 1.5, 2]
     clusters_amount = 10
 
     kernels = create_kernels(k_values, sig_values, distance_matrix)
-    for i in range(0, len(kernels)):
-        plt.title(f"Kernel no. {i}")
-        plt.imshow(kernels[i], interpolation="nearest", origin="upper")
-        plt.colorbar()
-        plt.show()
+    # for i in range(0, len(kernels)):
+    #     plt.title(f"Kernel no. {i}")
+    #     plt.imshow(kernels[i], interpolation="nearest", origin="upper")
+    #     plt.colorbar()
+    #     plt.show()
     similarity, weights, L = optimalization_process(
         kernels, clusters_amount, distance_matrix, k_values[-1]
     )
